@@ -16,7 +16,7 @@ export function WalletImport({ onImport }: WalletImportProps) {
 
   const handleImport = async () => {
     setError('');
-    
+
     if (!input.trim()) {
       setError('Please enter a private key or wallet JSON');
       return;
@@ -77,49 +77,50 @@ export function WalletImport({ onImport }: WalletImportProps) {
   }
 
   return (
-    <div className="wallet-import">
-      <div className="import-header">
-        <div className="security-badge">
-          <span className="lock-icon">🔒</span>
-          <span className="security-text">Secure Local Storage</span>
-        </div>
-        <h2>Import Wallet</h2>
-        <p className="import-subtitle">
+    <div className="import-container">
+      <div className="import-card">
+        <div className="import-title">Import Wallet</div>
+        <div className="import-subtitle">
           Enter your private key or wallet JSON to access your Octra wallet
-        </p>
-      </div>
+        </div>
 
-      <div className="security-notice">
-        <div className="security-notice-content">
-          <span className="security-icon">🔒</span>
-          <div className="security-details">
-            <strong>Private keys NEVER leave your device</strong>
-            <span>Keys are encrypted with your passphrase before storage. All transaction signing happens locally.</span>
+        <div className="security-notice">
+          <span className="security-notice-icon">🔒</span>
+          <div className="security-notice-text">
+            <strong>Private keys NEVER leave your device.</strong> Keys are encrypted with your passphrase before storage. All transaction signing happens locally.
           </div>
         </div>
-      </div>
 
-      <div className="import-form">
-        <label className="import-label">Private Key or Wallet JSON</label>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder='Private key (hex/base64) or {"priv":"...","addr":"...","rpc":"..."}'
-          rows={6}
-          className="import-input"
-        />
-        {error && <div className="error">{error}</div>}
-        
-        <div className="security-warning">
-          <span className="warning-icon">⚠️</span>
-          <span>Never share your private key with anyone. Anyone with your private key can access your wallet.</span>
+        <div className="form-group">
+          <label className="form-label">Private Key or Wallet JSON</label>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder='Private key (hex/base64) or {"priv":"...","addr":"...","rpc":"..."}'
+            rows={5}
+            className="form-input mono"
+            style={{ resize: 'vertical', minHeight: '120px' }}
+          />
         </div>
 
-        <button onClick={handleImport} className="import-btn">
+        {error && (
+          <div className="security-notice" style={{ backgroundColor: 'var(--color-error-bg)', marginBottom: 'var(--spacing-4)' }}>
+            <span className="security-notice-icon">⚠️</span>
+            <span className="security-notice-text" style={{ color: 'var(--color-error)' }}>{error}</span>
+          </div>
+        )}
+
+        <div className="security-notice" style={{ backgroundColor: 'var(--color-warning-bg)', marginBottom: 'var(--spacing-4)' }}>
+          <span className="security-notice-icon">⚠️</span>
+          <span className="security-notice-text" style={{ color: 'var(--color-warning)' }}>
+            Never share your private key with anyone. Anyone with your private key can access your wallet.
+          </span>
+        </div>
+
+        <button onClick={handleImport} className="submit-btn">
           Import Wallet
         </button>
       </div>
     </div>
   );
 }
-

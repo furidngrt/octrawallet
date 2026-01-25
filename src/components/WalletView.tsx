@@ -6,8 +6,8 @@ import { getNextNonce, releaseNonce } from '../utils/nonceManager';
 import { loadTransactions, mergeTransactions, upsertTransaction, saveTransactions } from '../utils/txStorage';
 import type { StoredTransaction } from '../utils/txStorage';
 import { SendTransaction } from './SendTransaction';
-import { StatsCard } from './StatsCard';
 import { RecentTransactions } from './RecentTransactions';
+import { PrivateBalance } from './PrivateBalance';
 
 interface WalletViewProps {
   wallet: WalletData;
@@ -18,7 +18,6 @@ export function WalletView({ wallet }: WalletViewProps) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [txCount, setTxCount] = useState<number>(0);
-  // Load recent transactions from localStorage first (optimistic UI)
   const [recentTxs, setRecentTxs] = useState<StoredTransaction[]>(() => loadTransactions(wallet.addr));
   const [txError, setTxError] = useState<string>('');
 
@@ -28,45 +27,36 @@ export function WalletView({ wallet }: WalletViewProps) {
       const bal = await getBalance(wallet.addr);
       const n = await getNonce(wallet.addr);
       setBalance(bal);
-      // Nonce represents transaction count
       setTxCount(n);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch balance');
     }
   };
 
-  // Fetch and refresh transactions
   const fetchTransactions = useCallback(async () => {
     try {
       setTxError('');
-      // Load from localStorage first (preserve confirmed status)
       const stored = loadTransactions(wallet.addr);
       if (stored.length > 0) {
         setRecentTxs(stored);
       }
-      
-      // Fetch from API and merge (mergeTransactions will preserve confirmed status)
-      const data = await getTransactions(wallet.addr, 5); // Get only 5 for recent
+
+      const data = await getTransactions(wallet.addr, 5);
       const merged = mergeTransactions(stored, data.transactions);
-      
-      // Save merged result back to localStorage to persist confirmed status
+
       if (merged.length > 0) {
         saveTransactions(wallet.addr, merged);
       }
-      
+
       setRecentTxs(merged);
     } catch (err) {
-      // On error: keep existing transactions, just set error message
       setTxError('Unable to refresh transactions');
-      // Do NOT clear transactions - keep what we have from localStorage (including confirmed status)
-      // stored transactions with confirmed status are already in state from loadTransactions above
     }
   }, [wallet.addr]);
 
   useEffect(() => {
     fetchBalance();
     fetchTransactions();
-    // Refresh balance every 10 seconds (silent to avoid flickering)
     const interval = setInterval(fetchBalance, 10000);
     return () => clearInterval(interval);
   }, [wallet.addr, fetchTransactions]);
@@ -86,18 +76,14 @@ export function WalletView({ wallet }: WalletViewProps) {
     let txNonce: number;
 
     try {
-      // Use reserved nonce if provided, otherwise get next nonce
       if (reservedNonce !== undefined) {
         txNonce = reservedNonce;
       } else {
-        // Fallback: get nonce if not reserved (shouldn't happen in normal flow)
         txNonce = await getNextNonce(wallet.addr, getNonce);
       }
 
-      // Pre-client uses time.time() which returns float (seconds since epoch)
       const txTimestamp = Date.now() / 1000;
-      
-      // Sign transaction
+
       const { signature, publicKey } = signTransactionData(
         wallet.priv,
         wallet.addr,
@@ -106,38 +92,30 @@ export function WalletView({ wallet }: WalletViewProps) {
         txNonce,
         txTimestamp
       );
-      
-      // Build transaction object matching pre-client format
-      // Amount conversion now handled in crypto.ts using BigInt
+
       const amountFloat = parseFloat(amount);
       if (isNaN(amountFloat) || !isFinite(amountFloat)) {
         throw new Error('Invalid amount');
       }
-      
-      // OU: Server requires minimum 1000
+
       const ou = amountFloat < 1000 ? "1000" : "3";
-      
-      // Get raw amount from crypto (converted to microOCT string using BigInt)
       const amountRaw = amountToMicroOCT(amount);
-      
+
       const txData = {
         from: wallet.addr,
         to_: to,
-        amount: amountRaw,  // String from BigInt conversion
-        nonce: txNonce,  // INT (pre-client format)
+        amount: amountRaw,
+        nonce: txNonce,
         ou,
-        timestamp: txTimestamp,  // FLOAT (pre-client format)
+        timestamp: txTimestamp,
         signature,
         public_key: publicKey,
         priority: priority,
       };
-      
+
       const txHash = await sendTx(txData);
-      
-      // Release nonce on success
       releaseNonce(wallet.addr, true);
-      
-      // Persist pending transaction to localStorage immediately (optimistic UI)
+
       const newTx = upsertTransaction(wallet.addr, {
         hash: txHash,
         timestamp: txTimestamp,
@@ -146,25 +124,19 @@ export function WalletView({ wallet }: WalletViewProps) {
         amount,
         priority: priority,
         nonce: txNonce,
-        // epoch omitted for pending transactions
         status: 'pending',
       });
-      
-      // Update UI immediately (optimistic)
-      setRecentTxs(newTx.slice(0, 5)); // Show only 5 most recent
-      
-      await fetchBalance(); // Refresh balance after send
+
+      setRecentTxs(newTx.slice(0, 5));
+      await fetchBalance();
       return txHash;
     } catch (err) {
-      // Release nonce on failure
       releaseNonce(wallet.addr, false);
-      
+
       const errMsg = err instanceof Error ? err.message : 'Failed to send transaction';
-      
-      // If error is nonce-related, try once more with fresh nonce
+
       if (errMsg.includes('nonce') && reservedNonce !== undefined) {
         try {
-          // Retry with fresh nonce
           const freshNonce = await getNextNonce(wallet.addr, getNonce);
           return handleSend(to, amount, priority, freshNonce);
         } catch (retryErr) {
@@ -172,7 +144,7 @@ export function WalletView({ wallet }: WalletViewProps) {
           throw retryErr;
         }
       }
-      
+
       setError(errMsg);
       throw err;
     } finally {
@@ -180,40 +152,75 @@ export function WalletView({ wallet }: WalletViewProps) {
     }
   };
 
+  const copyAddress = () => {
+    navigator.clipboard.writeText(wallet.addr);
+  };
 
-  const formatAddress = (addr: string) => {
-    // Format: oct6g..S7LZC (5 chars + .. + 5 chars)
-    return `${addr.slice(0, 5)}..${addr.slice(-5)}`;
+  // Format balance for display
+  const formatBalance = (bal: string) => {
+    const num = parseFloat(bal);
+    if (isNaN(num)) return '0.00';
+    return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 });
   };
 
   return (
-    <div className="wallet-view">
-      {/* Stats Row */}
-      <div className="stats-row">
-        <StatsCard
-          label="balance"
-          value={balance || '0'}
-          subValue=" OCT"
-        />
-        <StatsCard
-          label="address"
-          value={formatAddress(wallet.addr)}
-          copyText={wallet.addr}
-        />
-        <StatsCard
-          label="transactions count"
-          value={txCount}
-        />
+    <div className="wallet-dashboard">
+      {/* Header Stats Bar */}
+      <div className="dashboard-stats">
+        <div className="stat-item">
+          <span className="stat-label">Balance</span>
+          <span className="stat-value">
+            <span className="oct-icon">◎</span>
+            {formatBalance(balance)} OCT
+          </span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-label">Transactions</span>
+          <span className="stat-value">{txCount}</span>
+        </div>
+        <div className="stat-item address-stat">
+          <span className="stat-label">Address</span>
+          <div className="address-display">
+            <span className="address-text">{wallet.addr.slice(0, 8)}...{wallet.addr.slice(-6)}</span>
+            <button onClick={copyAddress} className="copy-btn" title="Copy address">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Error Display */}
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <div className="alert alert-error">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>{error}</span>
+        </div>
+      )}
 
-      {/* Main Section */}
-      <div className="main-section">
-        <div className="two-column-layout">
-          {/* Left: Send Card */}
-          <div className="send-card-wrapper">
+      {/* Private Balance Section - Above other sections */}
+      <div className="card-panel">
+        <PrivateBalance
+          walletAddress={wallet.addr}
+          privateKey={wallet.priv}
+          onRefresh={fetchBalance}
+        />
+      </div>
+
+      {/* Main Grid Layout - Responsive */}
+      <div className="dashboard-grid">
+        {/* Send Transaction Panel */}
+        <div className="card-panel">
+          <div className="card-panel-header">
+            <h3>Send Transaction</h3>
+          </div>
+          <div className="card-panel-body">
             <SendTransaction
               onSend={handleSend}
               balance={balance}
@@ -222,11 +229,16 @@ export function WalletView({ wallet }: WalletViewProps) {
               getNextNonce={handleGetNextNonce}
             />
           </div>
+        </div>
 
-          {/* Right: Recent Transactions */}
-          <div className="recent-tx-wrapper">
-            <RecentTransactions 
-              transactions={recentTxs} 
+        {/* Recent Transactions Panel */}
+        <div className="card-panel">
+          <div className="card-panel-header">
+            <h3>Recent Transactions</h3>
+          </div>
+          <div className="card-panel-body" style={{ padding: 0 }}>
+            <RecentTransactions
+              transactions={recentTxs}
               loading={false}
               error={txError}
             />

@@ -52,19 +52,19 @@ export function PassphrasePrompt({
   };
 
   return (
-    <div className="passphrase-modal-overlay">
-      <div className="passphrase-modal">
-        <h2>{title}</h2>
-        <p className="passphrase-hint">
+    <div className="import-container">
+      <div className="import-card">
+        <div className="import-title">{title}</div>
+        <div className="import-subtitle">
           {isUnlock
             ? 'Enter your passphrase to unlock your wallet'
             : 'Set a secure passphrase to encrypt your private key (minimum 8 characters)'}
-        </p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="passphrase-form">
+        <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label className="form-label">Passphrase</label>
-            <div className="password-input-wrapper">
+            <div style={{ position: 'relative' }}>
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={passphrase}
@@ -72,11 +72,13 @@ export function PassphrasePrompt({
                 placeholder="Enter passphrase"
                 className="form-input"
                 autoFocus
+                style={{ paddingRight: '48px' }}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="password-toggle"
+                className="copy-button"
+                style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)' }}
               >
                 {showPassword ? '👁️' : '👁️‍🗨️'}
               </button>
@@ -96,33 +98,36 @@ export function PassphrasePrompt({
             </div>
           )}
 
-          {error && <div className="error-small">{error}</div>}
+          {error && (
+            <div className="security-notice" style={{ backgroundColor: 'var(--color-error-bg)', marginBottom: 'var(--spacing-4)' }}>
+              <span className="security-notice-icon">⚠️</span>
+              <span className="security-notice-text" style={{ color: 'var(--color-error)' }}>{error}</span>
+            </div>
+          )}
 
-          <div className="passphrase-modal-actions">
+          <div className="modal-actions" style={{ marginTop: 'var(--spacing-4)' }}>
             {onCancel && (
               <button
                 type="button"
                 onClick={onCancel}
-                className="passphrase-btn cancel"
+                className="btn btn-secondary"
               >
                 Cancel
               </button>
             )}
-            <button type="submit" className="passphrase-btn primary" disabled={loading}>
+            <button type="submit" className="btn btn-primary" disabled={loading} style={{ flex: onCancel ? 1 : 'none', width: onCancel ? 'auto' : '100%' }}>
               {loading ? 'Processing...' : isUnlock ? 'Unlock' : 'Encrypt & Import'}
             </button>
           </div>
         </form>
 
-        <div className="security-warning">
-          <span className="warning-icon">⚠️</span>
-          <span>
-            If you forget your passphrase, you cannot recover your wallet. Keep it
-            safe and never share it.
+        <div className="security-notice" style={{ backgroundColor: 'var(--color-warning-bg)', marginTop: 'var(--spacing-4)' }}>
+          <span className="security-notice-icon">⚠️</span>
+          <span className="security-notice-text" style={{ color: 'var(--color-warning)' }}>
+            If you forget your passphrase, you cannot recover your wallet. Keep it safe and never share it.
           </span>
         </div>
       </div>
     </div>
   );
 }
-

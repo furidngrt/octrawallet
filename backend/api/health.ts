@@ -1,31 +1,24 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { handleCors, success, type HealthData } from './types';
 
 const OCTRA_RPC_URL = process.env.OCTRA_RPC_URL || 'https://octra.network';
-const ALLOWED_ORIGIN = 'https://octra-key.vercel.app';
-
-function setCorsHeaders(res: VercelResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-}
+const startTime = Date.now();
 
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  setCorsHeaders(res);
+  // Handle CORS preflight
+  if (handleCors(req, res)) return;
 
-  if (req.method === 'OPTIONS') {
-    res.status(204).end();
-    return;
-  }
+  const healthData: HealthData = {
+    service: 'Octra Wallet API',
+    status: 'ok',
+    version: '2.0.0',
+    uptime: Math.floor((Date.now() - startTime) / 1000),
+    timestamp: Date.now(),
+    rpcEndpoint: OCTRA_RPC_URL,
+  };
 
-  res.json({ 
-    status: 'ok', 
-    rpc: OCTRA_RPC_URL,
-    timestamp: new Date().toISOString()
-  });
+  success(res, healthData);
 }
-
-

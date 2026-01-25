@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { StoredTransaction } from '../utils/txStorage';
 
 interface RecentTransactionsProps {
@@ -7,35 +8,41 @@ interface RecentTransactionsProps {
 }
 
 export function RecentTransactions({ transactions, loading = false, error }: RecentTransactionsProps) {
+  const [copiedHash, setCopiedHash] = useState<string | null>(null);
+
   const formatAddress = (addr: string) => {
     if (!addr) return 'N/A';
-    return `${addr.slice(0, 5)}..${addr.slice(-5)}`;
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   };
 
   const formatDate = (timestamp: number | string) => {
     try {
-      // Handle both number (Unix timestamp) and string (ISO date)
-      const date = typeof timestamp === 'number' 
-        ? new Date(timestamp * 1000) 
+      const date = typeof timestamp === 'number'
+        ? new Date(timestamp * 1000)
         : new Date(timestamp);
-      return date.toLocaleString();
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     } catch {
-      return typeof timestamp === 'number' ? new Date(timestamp * 1000).toISOString() : String(timestamp);
+      return '—';
     }
   };
-  
-  const formatAmount = (amount: string) => {
-    // If amount is already formatted with "OCT", return as is
-    if (amount.includes('OCT')) return amount;
-    // Otherwise, assume it's a number and format it
-    const num = parseFloat(amount);
-    return isNaN(num) ? amount : `${num.toFixed(6)} OCT`;
+
+  const formatAmount = (amount: string, isIncoming: boolean) => {
+    const num = parseFloat(amount.replace(' OCT', ''));
+    if (isNaN(num)) return amount;
+    const prefix = isIncoming ? '+' : '-';
+    return `${prefix}${num.toFixed(4)} OCT`;
   };
-  
+
   const getStatus = (tx: StoredTransaction): 'success' | 'pending' | 'failed' => {
     if (tx.status === 'confirmed') return 'success';
     if (tx.status === 'failed') return 'failed';
     return 'pending';
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedHash(text);
+    setTimeout(() => setCopiedHash(null), 2000);
   };
 
   const getOctraScanUrl = (hash: string) => {
@@ -44,80 +51,149 @@ export function RecentTransactions({ transactions, loading = false, error }: Rec
 
   if (loading) {
     return (
-      <div className="tx-list-card">
-        <h3 className="section-title">Recent Transactions</h3>
-        <div className="tx-list-loading">
-          <div className="skeleton">Loading transactions...</div>
+      <div className="tx-loading">
+        <div className="empty-state">
+          <div className="animate-spin" style={{ fontSize: '24px' }}>⏳</div>
+          <p className="empty-state-text">Loading transactions...</p>
         </div>
       </div>
     );
   }
 
-  // ALWAYS render the container - never return null
+  if (transactions.length === 0) {
+    return (
+      <div className="empty-state">
+        <div className="empty-state-icon">📋</div>
+        <h4 className="empty-state-title">No transactions yet</h4>
+        <p className="empty-state-text">
+          Your transaction history will appear here once you send or receive OCT.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="tx-list-card">
-      <h3 className="section-title">Recent Transactions</h3>
+    <>
       {error && (
-        <div className="error-small" style={{ marginBottom: '12px' }}>
-          {error}
+        <div className="alert alert-warning" style={{ margin: 'var(--spacing-3)' }}>
+          <span>⚠️</span>
+          <span>{error}</span>
         </div>
       )}
-      {transactions.length === 0 ? (
-        <div className="tx-empty">
-          <p>No transactions yet</p>
-        </div>
-      ) : (
-        <div className="tx-list">
+
+      {/* Desktop Table View */}
+      <table className="tx-table tx-table-responsive">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Amount</th>
+            <th>Address</th>
+            <th>Status</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
           {transactions.map((tx) => {
             const status = getStatus(tx);
+            const isIncoming = tx.to === tx.from; // Simplified - would need wallet address
+
             return (
-              <div key={tx.hash} className="tx-item">
-                <div className="tx-header">
+              <tr key={tx.hash}>
+                <td>
+                  <span className={`badge ${isIncoming ? 'badge-success' : 'badge-primary'}`}>
+                    {isIncoming ? '↓ IN' : '↑ OUT'}
+                  </span>
+                </td>
+                <td>
+                  <span style={{ fontWeight: 600, color: isIncoming ? 'var(--color-success)' : 'var(--color-text-primary)' }}>
+                    {formatAmount(tx.amount, isIncoming)}
+                  </span>
+                </td>
+                <td>
+                  <div className="address-display">
+                    <span className="address-text">{formatAddress(tx.to)}</span>
+                    <button
+                      className="copy-btn"
+                      onClick={() => copyToClipboard(tx.to)}
+                      title="Copy address"
+                    >
+                      {copiedHash === tx.to ? '✓' : (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </td>
+                <td>
+                  <span className={`badge badge-${status === 'success' ? 'success' : status === 'pending' ? 'warning' : 'error'}`}>
+                    {status === 'success' ? 'Confirmed' : status === 'pending' ? 'Pending' : 'Failed'}
+                  </span>
+                </td>
+                <td>
                   <a
                     href={getOctraScanUrl(tx.hash)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="tx-hash-link"
+                    className="text-secondary"
+                    style={{ fontSize: 'var(--font-size-sm)' }}
                   >
-                    {formatAddress(tx.hash)}
+                    {formatDate(tx.timestamp)}
                   </a>
-                  <span className={`tx-badge tx-badge--${status === 'success' ? 'finalized' : status === 'pending' ? 'pending' : 'failed'}`}>
-                    {status === 'success' ? 'FINALIZED' : status === 'pending' && tx.epoch ? `INCLUDED (EPOCH ${tx.epoch})` : status.toUpperCase()}
-                  </span>
-                </div>
-                <div className="tx-details">
-                  <div className="tx-row amount-row">
-                    <span className="tx-label">Amount</span>
-                    <span className="tx-value">{formatAmount(tx.amount)}</span>
-                  </div>
-                  <div className="tx-meta-row">
-                    <span>{formatDate(tx.timestamp)}</span>
-                    {status === 'success' && tx.epoch !== undefined && (
-                      <>
-                        <span>·</span>
-                        <span>Epoch {tx.epoch}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-                {(status === 'success' || (status === 'pending' && tx.epoch !== undefined)) && (
-                  <div className="tx-actions">
-                    <a
-                      href={getOctraScanUrl(tx.hash)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="tx-link"
-                    >
-                      View on OctraScan →
-                    </a>
-                  </div>
-                )}
-              </div>
+                </td>
+              </tr>
             );
           })}
-        </div>
-      )}
-    </div>
+        </tbody>
+      </table>
+
+      {/* Mobile Card View */}
+      <div className="tx-cards">
+        {transactions.map((tx) => {
+          const status = getStatus(tx);
+          const isIncoming = tx.to === tx.from;
+
+          return (
+            <div key={tx.hash} className="tx-card">
+              <div className="tx-card-row">
+                <span className={`badge ${isIncoming ? 'badge-success' : 'badge-primary'}`}>
+                  {isIncoming ? '↓ Received' : '↑ Sent'}
+                </span>
+                <span className={`badge badge-${status === 'success' ? 'success' : status === 'pending' ? 'warning' : 'error'}`}>
+                  {status === 'success' ? 'Confirmed' : status === 'pending' ? 'Pending' : 'Failed'}
+                </span>
+              </div>
+              <div className="tx-card-row">
+                <span className="text-secondary" style={{ fontSize: 'var(--font-size-sm)' }}>Amount</span>
+                <span style={{ fontWeight: 600, color: isIncoming ? 'var(--color-success)' : 'var(--color-text-primary)' }}>
+                  {formatAmount(tx.amount, isIncoming)}
+                </span>
+              </div>
+              <div className="tx-card-row">
+                <span className="text-secondary" style={{ fontSize: 'var(--font-size-sm)' }}>To</span>
+                <div className="address-display">
+                  <span className="address-text">{formatAddress(tx.to)}</span>
+                  <button className="copy-btn" onClick={() => copyToClipboard(tx.to)}>
+                    {copiedHash === tx.to ? '✓' : '📋'}
+                  </button>
+                </div>
+              </div>
+              <div className="tx-card-row">
+                <span className="text-secondary" style={{ fontSize: 'var(--font-size-sm)' }}>Time</span>
+                <a
+                  href={getOctraScanUrl(tx.hash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 'var(--font-size-sm)' }}
+                >
+                  {formatDate(tx.timestamp)} →
+                </a>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
-

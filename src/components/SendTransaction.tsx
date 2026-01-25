@@ -30,7 +30,7 @@ export function SendTransaction({
   const handleAddressChange = (value: string) => {
     setTo(value);
     setAddressError('');
-    
+
     if (!value.trim()) {
       return;
     }
@@ -147,71 +147,81 @@ export function SendTransaction({
         />
       )}
 
-      <div className="send-card">
-        <h3 className="section-title">Send</h3>
-        <form onSubmit={handleSubmit} className="send-form">
-          <div className="form-group">
-            <label className="form-label">To Address</label>
-            <input
-              type="text"
-              value={to}
-              onChange={(e) => handleAddressChange(e.target.value)}
-              placeholder="oct..."
-              className={`form-input ${addressError ? 'input-error' : to.trim() && validateAddress(to.trim()) && (!walletAddress || to.trim() !== walletAddress) ? 'input-valid' : ''}`}
-              disabled={loading || sending}
-            />
-            {addressError && <div className="error-small">{addressError}</div>}
-            {to.trim() && !addressError && validateAddress(to.trim()) && (!walletAddress || to.trim() !== walletAddress) && (
-              <div className="success-small" style={{ color: '#060', fontSize: '12px', marginTop: '4px' }}>✓ Valid address</div>
-            )}
-          </div>
-          <div className="form-group">
-            <label className="form-label">Amount (OCT)</label>
-            <input
-              type="text"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.0"
-              className="form-input"
-              disabled={loading || sending}
-            />
-          </div>
-          <div className="form-group" style={{ marginBottom: '12px' }}>
-            <div className="priority-toggle">
-              <button
-                type="button"
-                className={`priority-btn ${priority === 'normal' ? 'active' : ''}`}
-                onClick={() => setPriority('normal')}
-                disabled={loading || sending}
-              >
-                Normal
-              </button>
-              <button
-                type="button"
-                className={`priority-btn ${priority === 'express' ? 'active' : ''}`}
-                onClick={() => setPriority('express')}
-                disabled={loading || sending}
-              >
-                Express
-              </button>
-            </div>
-          </div>
-          {error && <div className="error-small">{error}</div>}
-          {txHash && (
-            <div className="success-small">
-              ✓ Sent! <span className="tx-hash-link">{txHash.slice(0, 16)}...</span>
-            </div>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label className="form-label">To Address</label>
+          <input
+            type="text"
+            value={to}
+            onChange={(e) => handleAddressChange(e.target.value)}
+            placeholder="oct..."
+            className="form-input mono"
+            disabled={loading || sending}
+          />
+          {addressError && (
+            <div className="form-error">{addressError}</div>
           )}
-          <button
-            type="submit"
-            className="send-btn"
-            disabled={loading || sending || Boolean(addressError) || Boolean(to.trim() && !validateAddress(to.trim()))}
-          >
-            {sending ? 'Sending...' : 'Send'}
-          </button>
-        </form>
-      </div>
+          {to.trim() && !addressError && validateAddress(to.trim()) && (!walletAddress || to.trim() !== walletAddress) && (
+            <div className="form-hint" style={{ color: 'var(--color-success)' }}>✓ Valid address</div>
+          )}
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Amount (OCT)</label>
+          <input
+            type="text"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.0"
+            className="form-input"
+            disabled={loading || sending}
+          />
+          <div className="form-hint">Available: {balance} OCT</div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Priority</label>
+          <div className="priority-selector">
+            <div
+              className={`priority-option ${priority === 'normal' ? 'selected' : ''}`}
+              onClick={() => !loading && !sending && setPriority('normal')}
+            >
+              <span className="priority-label">🐢 Normal</span>
+              <span className="priority-fee">0.001 OCT</span>
+            </div>
+            <div
+              className={`priority-option ${priority === 'express' ? 'selected' : ''}`}
+              onClick={() => !loading && !sending && setPriority('express')}
+            >
+              <span className="priority-label">⚡ Express</span>
+              <span className="priority-fee">0.003 OCT</span>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="form-error" style={{ marginBottom: 'var(--spacing-3)' }}>{error}</div>
+        )}
+
+        {txHash && (
+          <div className="security-notice" style={{ backgroundColor: 'var(--color-success-bg)', marginBottom: 'var(--spacing-3)' }}>
+            <span className="security-notice-icon">✓</span>
+            <span className="security-notice-text" style={{ color: 'var(--color-success)' }}>
+              Sent! Hash: {txHash.slice(0, 20)}...
+            </span>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          className="submit-btn"
+          disabled={loading || sending || Boolean(addressError) || Boolean(to.trim() && !validateAddress(to.trim()))}
+        >
+          {sending ? 'Sending...' : 'Send Transaction'}
+        </button>
+      </form>
     </>
   );
 }
+
 

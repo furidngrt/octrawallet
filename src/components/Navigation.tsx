@@ -1,33 +1,25 @@
-import { Link, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 
-interface NavigationProps {
-  activeTab: string;
-}
-
-export function Navigation({}: NavigationProps) {
-  const location = useLocation();
-
+export function Navigation() {
   return (
-    <nav className="top-nav">
-      <ul className="nav-list">
-        <li>
-          <Link
-            to="/"
-            className={`nav-tab ${location.pathname === '/' ? 'active' : ''}`}
-          >
-            Wallet
-          </Link>
-        </li>
-        <li>
-          <Link
-            to="/Transactions"
-            className={`nav-tab ${location.pathname === '/Transactions' ? 'active' : ''}`}
-          >
-            Transactions
-          </Link>
-        </li>
-      </ul>
+    <nav className="nav-tabs">
+      <div className="nav-tabs-container">
+        <NavLink
+          to="/"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+          end
+        >
+          <span className="nav-icon">📊</span>
+          browse
+        </NavLink>
+        <NavLink
+          to="/Transactions"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <span className="nav-icon">📋</span>
+          transactions
+        </NavLink>
+      </div>
     </nav>
   );
 }
-

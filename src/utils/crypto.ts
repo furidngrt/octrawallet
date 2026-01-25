@@ -1,5 +1,6 @@
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
+import { sha256 } from 'js-sha256';
 
 const MICRO_OCT = 1_000_000n; // Use BigInt for precision
 
@@ -20,7 +21,7 @@ const MICRO_OCT = 1_000_000n; // Use BigInt for precision
 function getSigningKey(privateKey: string): nacl.SignKeyPair {
   try {
     let keyBytes: Uint8Array;
-    
+
     if (isBase64(privateKey)) {
       keyBytes = Uint8Array.from(atob(privateKey), c => c.charCodeAt(0));
     } else if (privateKey.startsWith('0x')) {
@@ -29,7 +30,7 @@ function getSigningKey(privateKey: string): nacl.SignKeyPair {
       // Assume hex without 0x prefix
       keyBytes = Uint8Array.from(privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
     }
-    
+
     // tweetnacl: 32-byte seed -> use fromSeed, 64-byte secret -> use fromSecretKey
     // PyNaCl (pre-client) uses 32-byte keys, so we use fromSeed
     return keyBytes.length === 32
@@ -44,19 +45,16 @@ function getSigningKey(privateKey: string): nacl.SignKeyPair {
  * Derive address from private key
  * Address = oct[base58(SHA256(pubkey))]
  * Note: Octra uses SHA256 hash of public key, not the public key directly
+ * Uses js-sha256 for compatibility with non-HTTPS environments
  */
-export async function privateKeyToAddress(privateKey: string): Promise<string> {
+export function privateKeyToAddress(privateKey: string): string {
   try {
     const keyPair = getSigningKey(privateKey);
     const pubKeyBytes = keyPair.publicKey;
-    
-    // Create a new ArrayBuffer copy for crypto.subtle compatibility
-    const pubKeyArray = Uint8Array.from(pubKeyBytes);
-    
-    // SHA256 hash the public key
-    const hashBuffer = await crypto.subtle.digest('SHA-256', pubKeyArray.buffer);
-    const hashArray = new Uint8Array(hashBuffer);
-    
+
+    // SHA256 hash the public key using js-sha256 (works in HTTP)
+    const hashArray = new Uint8Array(sha256.array(pubKeyBytes));
+
     // Base58 encode the hash and add 'oct' prefix
     const encoded = bs58.encode(hashArray);
     return 'oct' + encoded;
@@ -76,7 +74,7 @@ export function amountToMicroOCT(amount: string): string {
   }
 
   const trimmed = amount.trim();
-  
+
   // Check for invalid values
   if (trimmed === 'NaN' || trimmed === 'Infinity' || trimmed === '-Infinity') {
     throw new Error('Invalid amount: NaN or Infinity');
@@ -94,7 +92,7 @@ export function amountToMicroOCT(amount: string): string {
   }
 
   const [whole, decimals = ''] = parts;
-  
+
   // Validate whole part
   if (!/^\d+$/.test(whole)) {
     throw new Error('Invalid amount format');
@@ -113,9 +111,9 @@ export function amountToMicroOCT(amount: string): string {
   const wholeBigInt = BigInt(whole);
   const decimalsPadded = decimals.padEnd(6, '0').slice(0, 6);
   const decimalsBigInt = BigInt(decimalsPadded);
-  
+
   const microOCT = wholeBigInt * MICRO_OCT + decimalsBigInt;
-  
+
   return microOCT.toString();
 }
 
@@ -133,17 +131,17 @@ export function signTransactionData(
 ): { signature: string; publicKey: string } {
   try {
     const keyPair = getSigningKey(privateKey);
-    
+
     // Convert amount to raw units (microOCT) using BigInt
     const amountRaw = amountToMicroOCT(amount);
-    
+
     // OU: Server requires minimum 1000. Use "1000" for amounts < 1000 OCT, "3" for >= 1000 OCT
     const amountFloat = parseFloat(amount);
     if (isNaN(amountFloat) || !isFinite(amountFloat)) {
       throw new Error('Invalid amount value');
     }
     const ou = amountFloat < 1000 ? "1000" : "3";
-    
+
     // Create transaction object (without message, signature, public_key)
     // Order matches pre-client: from, to_, amount, nonce, ou, timestamp
     // CRITICAL: nonce is INT, timestamp is FLOAT (matching pre-client exactly)
@@ -155,16 +153,16 @@ export function signTransactionData(
       ou,  // String "1" or "3"
       timestamp: timestamp  // FLOAT (Unix timestamp in seconds)
     };
-    
+
     // Sign the JSON string (compact, no spaces - matching pre-client json.dumps separators=(",", ":"))
     const toSign = JSON.stringify(txData).replace(/\s+/g, '');
     const messageBytes = new TextEncoder().encode(toSign);
     const signatureBytes = nacl.sign.detached(messageBytes, keyPair.secretKey);
-    
+
     // Base64 encode signature and public key
     const signature = btoa(String.fromCharCode(...signatureBytes));
     const publicKey = btoa(String.fromCharCode(...keyPair.publicKey));
-    
+
     return { signature, publicKey };
   } catch (error) {
     throw new Error(`Failed to sign transaction: ${error}`);
@@ -185,7 +183,7 @@ function isBase64(str: string): boolean {
 export function validatePrivateKey(key: string): boolean {
   try {
     let keyBytes: Uint8Array;
-    
+
     if (isBase64(key)) {
       keyBytes = Uint8Array.from(atob(key), c => c.charCodeAt(0));
     } else if (key.startsWith('0x')) {
@@ -194,7 +192,7 @@ export function validatePrivateKey(key: string): boolean {
       // Assume hex without 0x prefix
       keyBytes = Uint8Array.from(key.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
     }
-    
+
     return keyBytes.length === 32;
   } catch {
     return false;

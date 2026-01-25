@@ -61,23 +61,23 @@ export function saveTransactions(address: string, transactions: StoredTransactio
  */
 export function upsertTransaction(address: string, tx: StoredTransaction): StoredTransaction[] {
   const existing = loadTransactions(address);
-  
+
   // Normalize priority helper
   const normalizePriority = (priority?: string): 'normal' | 'express' => {
     if (!priority) return 'normal';
     const normalized = priority.toLowerCase();
     return normalized === 'express' ? 'express' : 'normal';
   };
-  
+
   // Normalize priority in incoming tx
   const normalizedTx: StoredTransaction = {
     ...tx,
     priority: normalizePriority(tx.priority),
   };
-  
+
   // Check if transaction already exists
   const index = existing.findIndex(t => t.hash === normalizedTx.hash);
-  
+
   if (index >= 0) {
     // Update existing transaction (merge properties, preserve priority from new tx if provided)
     existing[index] = {
@@ -98,10 +98,10 @@ export function upsertTransaction(address: string, tx: StoredTransaction): Store
     };
     existing.unshift(newTx);
   }
-  
+
   // Sort by timestamp descending (newest first), limit to 50 transactions
   const sorted = existing.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 50);
-  
+
   saveTransactions(address, sorted);
   return sorted;
 }
@@ -129,7 +129,7 @@ export function updateTransactionStatus(
     }
     return tx;
   });
-  
+
   saveTransactions(address, updated);
   return updated;
 }
@@ -151,47 +151,55 @@ export function mergeTransactions(
     return normalized === 'express' ? 'express' : 'normal';
   };
 
-  // Convert API transactions to StoredTransaction format
-  const apiTxMap = new Map<string, StoredTransaction>();
-  apiTransactions.forEach(tx => {
-    // Preserve priority from API, normalize to lowercase
-    apiTxMap.set(tx.hash, {
-      ...tx,
-      priority: normalizePriority(tx.priority),
-      status: 'confirmed' as const,
-      lastCheckedAt: Date.now() / 1000,
-    });
-  });
-  
-  // Create a map of stored transactions for efficient lookup
+  // Create a map of stored transactions for efficient lookup first
   const storedTxMap = new Map<string, StoredTransaction>();
   stored.forEach(tx => {
     storedTxMap.set(tx.hash, tx);
   });
-  
+
+  // Convert API transactions to StoredTransaction format
+  const apiTxMap = new Map<string, StoredTransaction>();
+  apiTransactions.forEach(tx => {
+    // Check if API actually provided a priority
+    // If not, try to find it in stored transactions to preserve "Express" status
+    const storedTx = storedTxMap.get(tx.hash);
+    let priority: 'normal' | 'express' = 'normal';
+
+    if (tx.priority) {
+      priority = normalizePriority(tx.priority);
+    } else if (storedTx && storedTx.priority) {
+      priority = normalizePriority(storedTx.priority);
+    }
+
+    apiTxMap.set(tx.hash, {
+      ...tx,
+      priority,
+      status: 'confirmed' as const,
+      lastCheckedAt: Date.now() / 1000,
+    });
+  });
+
   // Merge logic: preserve confirmed status, update with API data
   const mergedMap = new Map<string, StoredTransaction>();
-  
+
   // First, add all API transactions (they're confirmed from network)
   apiTxMap.forEach((apiTx, hash) => {
     const storedTx = storedTxMap.get(hash);
     mergedMap.set(hash, {
       ...apiTx,
-      // Preserve priority from stored if API doesn't have it
-      priority: apiTx.priority || (storedTx ? normalizePriority(storedTx.priority) : 'normal'),
-      // Preserve createdAt from stored if exists
+      // Priority is already handled in apiTxMap construction
       createdAt: storedTx?.createdAt || apiTx.timestamp,
       status: 'confirmed' as const, // Always confirmed if in API response
     });
   });
-  
+
   // Then, add stored transactions that aren't in API results
   stored.forEach(storedTx => {
     // If already in merged (from API), skip
     if (mergedMap.has(storedTx.hash)) {
       return;
     }
-    
+
     // CRITICAL: If transaction was already confirmed, keep it as confirmed
     // Don't downgrade to pending just because API doesn't return it
     if (storedTx.status === 'confirmed') {
@@ -209,7 +217,7 @@ export function mergeTransactions(
       mergedMap.set(storedTx.hash, storedTx);
     }
   });
-  
+
   // Convert map to array, sort by timestamp descending, limit to 50
   const merged = Array.from(mergedMap.values());
   return merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 50);
